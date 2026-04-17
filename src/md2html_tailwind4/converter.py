@@ -8,10 +8,12 @@ class Converter:
         pass
 
     def convert_md_to_html(self, markdown_content):
+        # Inject markdown="1" so md_in_html processes content inside HTML blocks.
+        preprocessed = self._inject_markdown_attr(markdown_content)
         # Convert Markdown to HTML with richer extensions for broader content support.
         html_content = markdown.markdown(
-            markdown_content,
-            extensions=['tables', 'attr_list', 'fenced_code', 'sane_lists', 'nl2br'],
+            preprocessed,
+            extensions=['tables', 'attr_list', 'fenced_code', 'sane_lists', 'nl2br', 'md_in_html'],
         )
 
         # Parse the HTML content and convert tables to custom divs
@@ -66,7 +68,10 @@ class Converter:
             blockquote['class'] = 'mb-5 p-4 sm:p-5 rounded-r-xl border-l-4 bg-neutral-100 text-neutral-700 border-neutral-400 italic text-base leading-7 quote dark:bg-neutral-900/60 dark:text-neutral-300 dark:border-neutral-600'
 
         for img in soup.find_all('img'):
-            img['class'] = 'mx-auto my-5 w-full max-w-4xl h-auto rounded-xl border border-neutral-200 shadow-sm dark:border-neutral-700 dark:shadow-neutral-950/30'
+            if img.parent and img.parent.name == 'a':
+                img['class'] = 'inline h-5 align-middle'
+            else:
+                img['class'] = 'mx-auto my-5 w-full max-w-4xl h-auto rounded-xl border border-neutral-200 shadow-sm dark:border-neutral-700 dark:shadow-neutral-950/30'
 
         for pre in soup.find_all('pre'):
             pre['class'] = 'my-5 overflow-x-auto rounded-xl border border-neutral-200 bg-neutral-950 p-4 text-sm leading-6 text-neutral-100 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100'
@@ -84,7 +89,9 @@ class Converter:
             em['class'] = 'italic text-neutral-700 dark:text-neutral-300'
 
         for a in soup.find_all('a'):
-            a['class'] = 'text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900 transition-colors dark:text-sky-300 dark:decoration-sky-600 dark:hover:text-sky-200'
+            children = [c for c in a.children if getattr(c, 'name', None) or str(c).strip()]
+            if not (len(children) == 1 and getattr(children[0], 'name', None) == 'img'):
+                a['class'] = 'text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900 transition-colors dark:text-sky-300 dark:decoration-sky-600 dark:hover:text-sky-200'
             if a.get('href', '').startswith(('http://', 'https://')):
                 a['target'] = '_blank'
                 a['rel'] = 'noopener noreferrer'
@@ -123,7 +130,9 @@ class Converter:
                         audio_button = soup.new_tag('button', **{'class': 'audio-button ml-2', 'data-state': 'play'})
                         audio_button.string = '▶️'
                         audio_url = cells[2].get_text().strip()
-                        audio_id = span2_content.lower().replace(' ', '_').replace('[', '').replace(']', '')
+                        if not audio_url.startswith(('http://', 'https://', '/')):
+                            continue
+                        audio_id = re.sub(r'[^a-z0-9_]', '_', span2_content.lower())
                         audio = soup.new_tag('audio', **{'src': audio_url, 'class': 'hidden', 'controls': ''})
                         audio_button['onclick'] = f"togglePlayPause('{audio_id}', this);"
                         audio['id'] = audio_id
@@ -140,7 +149,6 @@ class Converter:
     @staticmethod
     def _is_audio_table(rows):
         # Audio-table mode is only valid when the 3rd column consistently contains media URLs.
-        media_suffixes = ('.mp3', '.wav', '.ogg', '.m4a', '.aac', '.webm')
         data_rows = rows[1:] if len(rows) > 1 else []
         if not data_rows:
             return False
@@ -155,7 +163,7 @@ class Converter:
         if not all(third_values):
             return False
 
-        return all(value.startswith(('http://', 'https://', '/')) or value.endswith(media_suffixes) for value in third_values)
+        return all(value.startswith(('http://', 'https://', '/')) for value in third_values)
 
     def _style_as_responsive_table(self, soup, table):
         table['class'] = 'min-w-full border-collapse text-sm sm:text-base'
@@ -185,8 +193,28 @@ class Converter:
     def create_full_html(self, soup):
         return str(soup)
 
+    @staticmethod
+    def _inject_markdown_attr(text):
+        """Inject markdown="1" into HTML block tags so md_in_html processes inner content."""
+        block_tags = r'div|section|article|header|footer|aside|main|nav|figure|figcaption|details|summary'
+
+        def inject(m):
+            if 'markdown=' in m.group(0).lower():
+                return m.group(0)
+            return m.group(0)[:-1] + ' markdown="1">'
+
+        return re.sub(
+            r'<(?:' + block_tags + r')(?:\s[^>]*)?(?<!/)>',
+            inject,
+            text,
+            flags=re.IGNORECASE,
+        )
+
     def escape_django_template_syntax_in_code_blocks(self, soup):
         for tag in soup.find_all(['code', 'pre']):
+            # Skip <code> inside <pre> — the <pre> pass already covers that text.
+            if tag.name == 'code' and tag.parent and tag.parent.name == 'pre':
+                continue
             # Keep code samples readable while preventing Django template parsing.
             if tag.string is not None:
                 tag.string.replace_with(self._escape_django_delimiters(str(tag.string)))
