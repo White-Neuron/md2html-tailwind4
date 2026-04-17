@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-17
+
+### Fixed
+
+- Badge paragraphs now render inline with `flex flex-wrap gap-2 items-center justify-center` instead of stacked with full line-height spacing
+- Deprecated `align="center/left/right"` HTML attributes are now translated to Tailwind `text-center/left/right` classes and removed from output
+
 ## [1.1.0] - 2026-04-17
 
 ### Fixed

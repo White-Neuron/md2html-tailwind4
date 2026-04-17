@@ -53,7 +53,10 @@ class Converter:
             h6['class'] = 'text-sm font-semibold uppercase tracking-wide mt-4 mb-2 text-neutral-700 dark:text-neutral-300'
 
         for p in soup.find_all('p'):
-            p['class'] = 'mb-4 text-base leading-7 text-pretty text-justify text-neutral-800 dark:text-neutral-200'
+            if self._is_badge_paragraph(p):
+                p['class'] = 'flex flex-wrap gap-2 items-center justify-center mb-4'
+            else:
+                p['class'] = 'mb-4 text-base leading-7 text-pretty text-justify text-neutral-800 dark:text-neutral-200'
 
         for ul in soup.find_all('ul'):
             ul['class'] = 'list-disc list-outside pl-6 mb-4 space-y-1 text-base leading-7 text-justify text-neutral-800 dark:text-neutral-200'
@@ -98,6 +101,17 @@ class Converter:
 
         for hr in soup.find_all('hr'):
             hr['class'] = 'my-8 border-neutral-300 dark:border-neutral-700'
+
+        align_map = {'center': 'text-center', 'right': 'text-right', 'left': 'text-left'}
+        for tag in soup.find_all(align=True):
+            align_val = tag.get('align', '').lower()
+            tailwind_class = align_map.get(align_val)
+            if tailwind_class:
+                existing = tag.get('class', '')
+                if isinstance(existing, list):
+                    existing = ' '.join(existing)
+                tag['class'] = f'{existing} {tailwind_class}'.strip()
+                del tag['align']
 
     def convert_tables(self, soup):
         for table in soup.find_all('table'):
@@ -192,6 +206,22 @@ class Converter:
 
     def create_full_html(self, soup):
         return str(soup)
+
+    @staticmethod
+    def _is_badge_paragraph(p):
+        """Return True if all meaningful children of a <p> are badge links (<a><img>) or <br> tags."""
+        for child in p.children:
+            name = getattr(child, 'name', None)
+            if name == 'br':
+                continue
+            if name == 'a':
+                a_children = [c for c in child.children if getattr(c, 'name', None) or str(c).strip()]
+                if len(a_children) == 1 and getattr(a_children[0], 'name', None) == 'img':
+                    continue
+            if not name and not str(child).strip():
+                continue
+            return False
+        return True
 
     @staticmethod
     def _inject_markdown_attr(text):
