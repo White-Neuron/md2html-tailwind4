@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-19
+
+### Added
+
+- Support for 5 new Markdown extensions: `abbr` (abbreviations with `<abbr>` tooltip), `def_list` (definition lists `<dl>/<dt>/<dd>`), `footnotes` (`[^1]` syntax), `admonition` (`!!! note/warning/danger/...` callout boxes), `toc` (auto-generates `id` attributes on headings for anchor links)
+- Tailwind classes for all new elements: `<abbr>`, `<dl>/<dt>/<dd>`, admonition boxes (color-coded by type), footnote section
+- Admonition color scheme: `note`/`info` → blue, `tip`/`hint`/`success` → green, `warning`/`caution`/`attention` → amber, `danger`/`error` → red, `important` → purple
+
+### Fixed
+
+- List items (`* item`, `- item`, `1. item`) and blockquotes immediately following a paragraph (no blank line) were not rendered as HTML lists due to the `nl2br` extension consuming the newline. A new `_ensure_list_spacing` preprocessor inserts the required blank line automatically.
+
+## [1.3.0] - 2026-04-19
+
+### Added
+
+- `font_size` parameter on `Converter` (`'sm'`, `'base'`, `'lg'`; default `'base'`) to control the typographic scale of all rendered elements
+- `--font-size` CLI flag (`sm` | `base` | `lg`) passed through to `Converter`
+
 ## [1.2.0] - 2026-04-17
 
 ### Fixed
