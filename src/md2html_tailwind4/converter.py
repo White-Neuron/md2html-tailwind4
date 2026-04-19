@@ -120,6 +120,14 @@ class Converter:
         for p in soup.find_all('p'):
             if self._is_badge_paragraph(p):
                 p['class'] = 'flex flex-wrap gap-2 items-center justify-center mb-4'
+            elif self._is_image_with_caption_paragraph(p):
+                p['class'] = 'mb-4 text-center'
+                for br in p.find_all('br'):
+                    br.decompose()
+            elif self._is_image_only_paragraph(p):
+                p['class'] = 'mb-1'
+            elif self._is_image_caption_paragraph(p):
+                p['class'] = 'mt-1 mb-4 text-center text-sm leading-6 text-neutral-600 dark:text-neutral-400'
             else:
                 p['class'] = f'mb-4 {s["body_size"]} leading-7 text-pretty text-justify text-neutral-800 dark:text-neutral-200'
 
@@ -139,7 +147,7 @@ class Converter:
             if img.parent and img.parent.name == 'a':
                 img['class'] = 'inline h-5 align-middle'
             else:
-                img['class'] = 'mx-auto my-5 w-full max-w-4xl h-auto rounded-xl border border-neutral-200 shadow-sm dark:border-neutral-700 dark:shadow-neutral-950/30'
+                img['class'] = 'mx-auto my-2 w-full max-w-4xl h-auto rounded-xl border border-neutral-200 shadow-sm dark:border-neutral-700 dark:shadow-neutral-950/30'
 
         for pre in soup.find_all('pre'):
             pre['class'] = f'my-5 overflow-x-auto rounded-xl border border-neutral-200 bg-neutral-950 p-4 {s["pre_size"]} leading-6 text-neutral-100 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100'
@@ -154,7 +162,12 @@ class Converter:
             strong['class'] = 'font-semibold text-neutral-900 dark:text-neutral-100'
 
         for em in soup.find_all('em'):
-            em['class'] = 'italic text-neutral-700 dark:text-neutral-300'
+            if em.parent and em.parent.name == 'p' and self._is_image_with_caption_paragraph(em.parent):
+                em['class'] = 'mt-1 block text-sm italic text-neutral-600 dark:text-neutral-400'
+            elif em.parent and em.parent.name == 'p' and self._is_image_caption_paragraph(em.parent):
+                em['class'] = 'italic text-inherit'
+            else:
+                em['class'] = 'italic text-neutral-700 dark:text-neutral-300'
 
         for a in soup.find_all('a'):
             a_cls = a.get('class') or []
@@ -327,6 +340,64 @@ class Converter:
                 continue
             return False
         return True
+
+    @staticmethod
+    def _is_image_only_paragraph(p):
+        """Return True if a paragraph contains only a single image (optionally wrapped by a link)."""
+        children = [c for c in p.children if getattr(c, 'name', None) or str(c).strip()]
+        if len(children) != 1:
+            return False
+        child = children[0]
+        name = getattr(child, 'name', None)
+        if name == 'img':
+            return True
+        if name == 'a':
+            a_children = [c for c in child.children if getattr(c, 'name', None) or str(c).strip()]
+            return len(a_children) == 1 and getattr(a_children[0], 'name', None) == 'img'
+        return False
+
+    @staticmethod
+    def _is_image_with_caption_paragraph(p):
+        """Return True if a paragraph contains an image and an emphasized caption line."""
+        meaningful = [c for c in p.children if getattr(c, 'name', None) or str(c).strip()]
+        names = {getattr(c, 'name', None) for c in meaningful if getattr(c, 'name', None)}
+        if not meaningful:
+            return False
+
+        has_image = False
+        for child in meaningful:
+            name = getattr(child, 'name', None)
+            if name == 'img':
+                has_image = True
+                break
+            if name == 'a':
+                a_children = [c for c in child.children if getattr(c, 'name', None) or str(c).strip()]
+                if len(a_children) == 1 and getattr(a_children[0], 'name', None) == 'img':
+                    has_image = True
+                    break
+
+        if not has_image or 'em' not in names:
+            return False
+
+        # Allow only image/link, caption (<em>), line breaks and whitespace text nodes.
+        for child in meaningful:
+            name = getattr(child, 'name', None)
+            if name in ('img', 'em', 'br'):
+                continue
+            if name == 'a':
+                a_children = [c for c in child.children if getattr(c, 'name', None) or str(c).strip()]
+                if len(a_children) == 1 and getattr(a_children[0], 'name', None) == 'img':
+                    continue
+            if not name and not str(child).strip():
+                continue
+            return False
+        return True
+
+    @staticmethod
+    def _is_image_caption_paragraph(p):
+        """Return True if a paragraph is an image caption rendered as only emphasized text."""
+        children = [c for c in p.children if getattr(c, 'name', None) or str(c).strip()]
+        return bool(children) and all(getattr(c, 'name', None) == 'em' for c in children)
 
     @staticmethod
     def _ensure_list_spacing(text):

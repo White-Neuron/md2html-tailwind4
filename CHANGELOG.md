@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-04-19
+
+### Fixed
+
+- Reduced excessive spacing between images and captions. Added dedicated handling for paragraphs that contain image + caption content in a single block, removed injected `<br>` spacing in that case, and applied tighter caption typography/spacing classes.
+
 ## [1.4.1] - 2026-04-19
 
 ### Fixed
