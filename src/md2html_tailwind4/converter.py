@@ -336,14 +336,16 @@ class Converter:
         Python-Markdown from recognising list markers that aren't preceded by
         a blank line.  This preprocessor adds the required blank line.
         """
-        _LIST_MARKER = re.compile(r'^([ \t]*([-*+]|\d+[.)])[ \t]+|>[ \t]|!!! )', re.MULTILINE)
+        _LIST_MARKER = re.compile(r'^([ \t]*([-*+]|\d+[.)])[ \t]+|>[ \t]|!!! )')
         lines = text.splitlines(keepends=True)
         result = []
         for i, line in enumerate(lines):
             if i > 0 and _LIST_MARKER.match(line):
                 prev = lines[i - 1].rstrip('\n').rstrip('\r')
-                if prev.strip():  # previous line is non-empty
-                    result.append('\n')  # inject blank line
+                # Only insert blank line before the FIRST item of a list block.
+                # If the previous line is itself a list item, no blank line needed.
+                if prev.strip() and not _LIST_MARKER.match(lines[i - 1]):
+                    result.append('\n')
             result.append(line)
         return ''.join(result)
 
