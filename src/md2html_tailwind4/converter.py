@@ -68,15 +68,19 @@ class Converter:
         spaced = self._ensure_list_spacing(markdown_content)
         # Inject markdown="1" so md_in_html processes content inside HTML blocks.
         preprocessed = self._inject_markdown_attr(spaced)
+        # Normalize split math: merge $...$ text $...$ → $... text ...$
+        preprocessed = self._normalize_split_math_expressions(preprocessed)
         # Convert Markdown to HTML with richer extensions for broader content support.
         html_content = markdown.markdown(
             preprocessed,
             extensions=[
                 'tables', 'attr_list', 'fenced_code', 'sane_lists', 'nl2br', 'md_in_html',
-                'abbr', 'def_list', 'footnotes', 'admonition', 'toc',
+                'abbr', 'def_list', 'footnotes', 'admonition', 'toc', 'pymdownx.arithmatex',
             ],
             extension_configs={
                 'toc': {'marker': '', 'permalink': False},
+                # Keep TeX delimiters in a renderer-friendly form (MathJax/KaTeX).
+                'pymdownx.arithmatex': {'generic': True},
             },
         )
 
@@ -91,6 +95,12 @@ class Converter:
 
         # Escape Django template delimiters in code examples so they render literally.
         self.escape_django_template_syntax_in_code_blocks(soup)
+
+        # Fallback for environments that block/strip script execution (e.g. chat/webview).
+        self._replace_common_latex_commands_in_text(soup)
+
+        # If math markup exists, bootstrap MathJax so expressions render in browsers.
+        self._inject_mathjax_bootstrap(soup)
 
         # Create the full HTML content with JavaScript for play/pause toggle
         full_html_content = self.create_full_html(soup)
@@ -326,6 +336,59 @@ class Converter:
         return str(soup)
 
     @staticmethod
+    def _inject_mathjax_bootstrap(soup):
+        if not soup.find(class_='arithmatex'):
+            return
+
+        config_script = soup.new_tag('script')
+        config_script.string = (
+            "window.MathJax = window.MathJax || {"
+            "tex: {inlineMath: [['\\\\(', '\\\\)'], ['$', '$']], displayMath: [['\\\\[', '\\\\]']]},"
+            "svg: {fontCache: 'global'}"
+            "};"
+        )
+        soup.append(config_script)
+
+        loader_script = soup.new_tag(
+            'script',
+            src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js',
+        )
+        loader_script['async'] = ''
+        soup.append(loader_script)
+
+    @staticmethod
+    def _normalize_split_math_expressions(text):
+        """Merge math fragments with LaTeX commands into single expression.
+        
+        E.g.: $4.99 \\rightarrow $14.99 → $4.99 \\rightarrow 14.99$
+              $4.99$ \\rightarrow $14.99$ → $4.99 \\rightarrow 14.99$
+        """
+        lines = text.split('\n')
+        result = []
+        
+        for line in lines:
+            # If line has both $ and \ (LaTeX command), try to normalize
+            if '$' in line and '\\' in line:
+                # Count $ signs
+                dollar_count = line.count('$')
+                
+                # If 2 dollars + LaTeX: $content \cmd $content → $content \cmd content$
+                # Only merge when group 1 has real content before the command
+                # (e.g. $4.99 \rightarrow $14.99) to avoid swallowing text after
+                # a standalone $\cmd$ expression (e.g. $\rightarrow$ *italic*).
+                if dollar_count == 2:
+                    line = re.sub(r'\$([^\$\\\s][^\$]*?)(\\[a-z]+[^\$]*?)\s*\$([^\$\n]*)',
+                                  r'$\1\2 \3$', line)
+                # If 3+ dollars + LaTeX: merge outer dollars
+                elif dollar_count >= 3:
+                    # $content1$ \cmd $content2$ → $content1 \cmd content2$
+                    line = re.sub(r'\$([^\$]+?)\$(\s*\\[a-z]+[^\$]*?)\s*\$([^\$]+?)\$',
+                                  r'$\1\2 \3$', line)
+            result.append(line)
+        
+        return '\n'.join(result)
+
+    @staticmethod
     def _is_badge_paragraph(p):
         """Return True if all meaningful children of a <p> are badge links (<a><img>) or <br> tags."""
         for child in p.children:
@@ -461,3 +524,44 @@ class Converter:
             '#}': '{% templatetag closecomment %}',
         }
         return re.sub(r'\{\{|\}\}|\{%|%\}|\{#|#\}', lambda m: token_map[m.group(0)], text)
+
+    @staticmethod
+    def _replace_common_latex_commands_in_text(soup):
+        command_map = {
+            'rightarrow': '→',
+            'leftarrow': '←',
+            'leftrightarrow': '↔',
+            'to': '→',
+            'times': '×',
+            'pm': '±',
+            'ge': '≥',
+            'geq': '≥',
+            'le': '≤',
+            'leq': '≤',
+            'cdot': '·',
+        }
+        cmd_pattern = re.compile(r'\\{1,2}([a-zA-Z]+)\b')
+        skip_parents = {'code', 'pre', 'script', 'style'}
+
+        for text_node in soup.find_all(string=True):
+            parent = text_node.parent
+            if parent and parent.name in skip_parents:
+                continue
+
+            original = str(text_node)
+
+            def replace_command(match):
+                return command_map.get(match.group(1).lower(), match.group(0))
+
+            updated = cmd_pattern.sub(replace_command, original)
+            # \text{content} → content
+            updated = re.sub(r'\\{1,2}text\{([^}]*)\}', r'\1', updated)
+            # \$ → $ (escaped dollar sign in LaTeX)
+            updated = updated.replace('\\$', '$')
+            # Clean up raw TeX delimiters when they remain as literal text.
+            updated = updated.replace('\\(', '').replace('\\)', '')
+            updated = updated.replace('\\[', '').replace('\\]', '')
+            updated = re.sub(r'\s{2,}', ' ', updated)
+
+            if updated != original:
+                text_node.replace_with(updated)

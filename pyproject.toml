@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "md2html-tailwind4"
-version = "1.4.2"
+version = "1.5.0"
 description = "A Python package that converts Markdown to HTML using Tailwind CSS 4 for styling."
 authors = [
     { name = "White Neuron Co., Ltd.", email = "contact@whiteneuron.com" },
@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "markdown>=3.10.2",
+    "pymdown-extensions>=10.16.1",
 ]
 
 [project.scripts]
