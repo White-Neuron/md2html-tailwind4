@@ -363,6 +363,12 @@ class Converter:
         E.g.: $4.99 \\rightarrow $14.99 → $4.99 \\rightarrow 14.99$
               $4.99$ \\rightarrow $14.99$ → $4.99 \\rightarrow 14.99$
         """
+        def _merge_two_dollars(m):
+            group3 = m.group(3)
+            if group3.strip():
+                return f"${m.group(1)}{m.group(2)} {group3}$"
+            return m.group(0)
+
         lines = text.split('\n')
         result = []
         
@@ -373,12 +379,12 @@ class Converter:
                 dollar_count = line.count('$')
                 
                 # If 2 dollars + LaTeX: $content \cmd $content → $content \cmd content$
-                # Only merge when group 1 has real content before the command
+                # Only merge when group 3 has actual non-whitespace content after second $.
                 # (e.g. $4.99 \rightarrow $14.99) to avoid swallowing text after
                 # a standalone $\cmd$ expression (e.g. $\rightarrow$ *italic*).
                 if dollar_count == 2:
                     line = re.sub(r'\$([^\$\\\s][^\$]*?)(\\[a-z]+[^\$]*?)\s*\$([^\$\n]*)',
-                                  r'$\1\2 \3$', line)
+                                  _merge_two_dollars, line)
                 # If 3+ dollars + LaTeX: merge outer dollars
                 elif dollar_count >= 3:
                     # $content1$ \cmd $content2$ → $content1 \cmd content2$
@@ -442,10 +448,12 @@ class Converter:
         if not has_image or 'em' not in names:
             return False
 
-        # Allow only image/link, caption (<em>), line breaks and whitespace text nodes.
+        # Allow only image/link, caption (<em> without links), line breaks and whitespace text nodes.
         for child in meaningful:
             name = getattr(child, 'name', None)
-            if name in ('img', 'em', 'br'):
+            if name in ('img', 'br'):
+                continue
+            if name == 'em' and not child.find('a'):
                 continue
             if name == 'a':
                 a_children = [c for c in child.children if getattr(c, 'name', None) or str(c).strip()]
@@ -460,7 +468,10 @@ class Converter:
     def _is_image_caption_paragraph(p):
         """Return True if a paragraph is an image caption rendered as only emphasized text."""
         children = [c for c in p.children if getattr(c, 'name', None) or str(c).strip()]
-        return bool(children) and all(getattr(c, 'name', None) == 'em' for c in children)
+        if not children or not all(getattr(c, 'name', None) == 'em' for c in children):
+            return False
+        # An <em> that wraps a link is italic text, not a caption.
+        return not any(child.find('a') for child in children)
 
     @staticmethod
     def _ensure_list_spacing(text):
@@ -545,7 +556,7 @@ class Converter:
 
         for text_node in soup.find_all(string=True):
             parent = text_node.parent
-            if parent and parent.name in skip_parents:
+            if parent and (parent.name in skip_parents or (parent.name == 'span' and 'arithmatex' in parent.get('class', []))):
                 continue
 
             original = str(text_node)
