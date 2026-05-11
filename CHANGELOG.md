@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-05-11
+
+### Fixed
+
+- MathJax config escaping: reverted quadruple backslash (`\\\\(`) so JS receives correct `\(` delimiter
+- Split math expression merge regex: replaced inline replacement string with callback function that checks `group3.strip()` to avoid creating trailing space before closing `$`, which broke `pymdownx.arithmatex` delimiter detection
+- `_replace_common_latex_commands_in_text`: skip `<span class="arithmatex">` nodes so fallback LaTeX→Unicode conversion doesn't strip `\(` and `\)` delimiters needed by MathJax
+
+### Changed
+
+- Image caption detection: `<em>` wrapping a link is now treated as italic text, not an image caption (consistent with `_is_image_caption_paragraph`)
+
 ## [1.4.2] - 2026-04-19
 
 ### Fixed
